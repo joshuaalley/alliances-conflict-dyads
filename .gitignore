@@ -2,4 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
-.rds
+
+# Ignore compiled RStan Code
+*.rds
