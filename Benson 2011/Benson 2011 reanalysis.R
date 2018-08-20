@@ -1,23 +1,31 @@
 # Joshua Alley
 # Texas A&M University
-# Replication and check of Benson 2011's model of conflict onset
+# Replication and check of Benson's 2011 model of conflict onset
 
 
 # Load packages
 library(here)
 library(haven)
+library(arm)
 library(MASS)
 library(dplyr)
 library(ggplot2)
 library(separationplot)
 library(sandwich)
 library(lmtest)
-
+library(rstan)
+library(shinystan)
 
 
 # Set working directory to current folder 
 setwd(here::here())
 getwd()
+
+# Set up STAN guidelines
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+
+
 
 
 # Load data 
@@ -113,9 +121,62 @@ xtable(results.benson.corr)
 
 
 
+### Fit varying intercept model 
+
+# LMER routine (This may not converge)
+benson.vi.mle <- glmer(mzinit ~ jointdem + cont + caprat2 + sglo + uncondcompel + condcompel + uncondeter + 
+                         condeter + probabilistic + peaceyears + peace2 + peace3 +
+                         (1 | ccode1) + (1 | ccode2) + (1 | ddyad),
+                       family = binomial(link = "logit"), data = benson.2011)
 
 
+# STAN Model
+
+# Pull IVs and rescale so posterior variances are not wildly different
+ivs.benson <- benson.2011.comp[, 5:ncol(benson.2011.comp)]
+ivs.benson[1: ncol(ivs.benson)] <- lapply(ivs.benson[1: ncol(ivs.benson)], 
+                     function(x) rescale(x, binary.inputs = "0/1"))
+ivs.benson <- as.matrix(ivs.benson)
+
+# create a challenger state index variable
+benson.2011.comp$challenger.id <- benson.2011.comp %>% group_indices(ccode1)
+# Create a target index variable 
+benson.2011.comp$target.id <- benson.2011.comp %>% group_indices(ccode2)
 
 
+# Assign data and place in list
+stan.data.benson <- list(N = nrow(benson.2011.comp), y = benson.2011.comp$mzinit, 
+                         X = ivs.benson, K = ncol(ivs.benson),
+                         chall = benson.2011.comp$challenger.id, 
+                         C = length(unique(benson.2011.comp$challenger.id)), 
+                         targ = benson.2011.comp$target.id,
+                         T = length(unique(benson.2011.comp$target.id))
+                         )
+
+# compile STAN code
+model.1 <- stan_model(file = "VI Stan Model.stan")
+
+# Run variational Bayes approximation
+vb.benson <- vb(model.1, data = stan.data.benson, seed = 12)
+launch_shinystan(vb.benson)
+
+# Regular STAN
+system.time(
+  vi.model.benson <- sampling(model.1,
+                          data = stan.data.benson, 
+                          iter = 2000, warmup = 1000, chains = 4
+  )
+)
+
+# Check convergence diagnostics
+check_hmc_diagnostics(vi.model.benson)
+
+coef.summary <- summary(vi.model.benson, pars = c("beta", "alpha"), probs = c(0.025, 0.975))$summary
+rownames(coef.summary) <- c("jointdem", "cont", "caprat2", "sglo", 
+                            "uncondcompel", "condcompel", "uncondeter", 
+                              "condeter", "probabilistic", 
+                              "peaceyears", "peace2", "peace3", 
+                              "constant")
+coef.summary
 
 
