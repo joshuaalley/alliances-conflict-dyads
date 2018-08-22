@@ -7,12 +7,16 @@
 # Load packages
 library(here)
 library(haven)
+library(arm)
 library(MASS)
 library(dplyr)
 library(ggplot2)
 library(separationplot)
 library(sandwich)
 library(lmtest)
+library(xtable)
+library(rstan)
+library(shinystan)
 
 
 
@@ -21,15 +25,14 @@ setwd(here::here())
 getwd()
 
 
-# Load data
-jl.2011 <- read.csv("Johnson & Leeds 2011/johnson-leeds-2011.csv")
+# Set up STAN guidelines
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 
-# Replicate their probit results
-jl.2011.probit <- glm(dispute ~ ptargdef + pchalally + pchaloff + pchalneu +
-                        ln_distance + capprop + jdem + s_un_glo + 
-                        peaceyrs + peaceyrs2 + peaceyrs3,
-                      family = binomial(link = "probit"),
-                      data = jl.2011)
+
+
+# Load data
+jl.2011 <- read.csv("Johnson and Leeds 2011/johnson-leeds-2011.csv")
 
 
 ### Robustness Check: cluster robust variance estimator 
@@ -41,7 +44,7 @@ jl.2011.comp <- select(jl.2011, dispute, ptargdef, pchalally, pchaloff, pchalneu
 jl.2011.comp <- jl.2011.comp[complete.cases(jl.2011.comp), ]
 
 
-# Run the model: use a logit in place of probit. 
+# Run the model: use a logit link instead of probit. 
 # Similar inferences: marginal increase in p-value for challenger and target defense pacts
 jl.2011.model <- glm(dispute ~ ptargdef + pchalally + pchaloff + pchalneu +
                        ln_distance + capprop + jdem + s_un_glo + 
@@ -103,11 +106,74 @@ jl.se_nc <- sqrt(diag(jl.V1))
 
 # Export the results
 results.jl.corr <- cbind(jl.2011.model$coefficients, jl.dcr_se, jl.stat.sig)
-results.jl.corr
+print(results.jl.corr)
 
-library(xtable)
+
 xtable(jl.2011.model)
 xtable(results.jl.corr)
 
 # Correcting the standard errors means that Target and challenger defensive pacts 
 # are no longer associated with MID initiation at conventional levels of statistical significance
+
+
+
+
+
+
+### Fit varying intercept model 
+
+# STAN Model
+
+# Pull IVs and rescale so posterior variances are not wildly different
+ivs.jl <- jl.2011.comp[, 2: 12]
+ivs.jl[1: ncol(ivs.jl)] <- lapply(ivs.jl[1: ncol(ivs.jl)], 
+                                          function(x) rescale(x, binary.inputs = "0/1"))
+ivs.jl <- as.matrix(ivs.jl)
+
+# create a challenger state index variable
+jl.2011.comp$challenger.id <- jl.2011.comp %>% group_indices(challenger)
+# Create a target index variable 
+jl.2011.comp$target.id <- jl.2011.comp %>% group_indices(target)
+
+# Create a dyad index variable
+jl.2011.comp$dyad.id <- jl.2011.comp %>% group_indices(ddyad)
+
+
+# Assign data and place in list
+stan.data.jl <- list(N = nrow(jl.2011.comp), y = jl.2011.comp$dispute, 
+                         X = ivs.jl, K = ncol(ivs.jl),
+                         chall = jl.2011.comp$challenger.id, 
+                         C = length(unique(jl.2011.comp$challenger.id)), 
+                         targ = jl.2011.comp$target.id,
+                         T = length(unique(jl.2011.comp$target.id)),
+                         dyad = jl.2011.comp$dyad.id,
+                         D = length(unique(jl.2011.comp$dyad.id))
+)
+
+# compile STAN code
+model.1 <- stan_model(file = "VI Stan Model.stan")
+
+# Run variational Bayes approximation: this did not converge
+vb.jl <- vb(model.1, data = stan.data.jl, seed = 12)
+launch_shinystan(vb.jl)
+
+
+# Regular STAN: this will take a long time. 
+# system.time(
+#  vi.model.jl <- sampling(model.1,
+#                              data = stan.data.jl, 
+#                              iter = 2000, warmup = 1000, chains = 4
+#  )
+#)
+
+# Check convergence diagnostics
+#check_hmc_diagnostics(vi.model.jl)
+
+vi.summary.jl <- summary(vb.jl, pars = c("beta", "alpha"), probs = c(0.025, 0.975))$summary
+rownames(vi.summary.jl) <- c("ptargdef", "pchalally", "pchaloff", "pchalneu",
+                               "ln_distance", "capprop", "jdem", "s_un_glo", 
+                               "peaceyrs", "peaceyrs2", "peaceyrs3", 
+                            "constant")
+print(vi.summary.jl)
+
+
