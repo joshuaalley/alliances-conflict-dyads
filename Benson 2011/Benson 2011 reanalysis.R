@@ -13,6 +13,7 @@ library(ggplot2)
 library(separationplot)
 library(sandwich)
 library(lmtest)
+library(xtable)
 library(rstan)
 library(shinystan)
 
@@ -109,9 +110,9 @@ se_nc <- sqrt(diag(V1))
 
 # Export the results
 results.benson.corr <- cbind(fit.benson$coefficients, dcr_se, stat.sig)
+print(results.benson.corr)
 
 
-library(xtable)
 xtable(fit.benson)
 xtable(results.benson.corr)
 
@@ -122,13 +123,6 @@ xtable(results.benson.corr)
 
 
 ### Fit varying intercept model 
-
-# LMER routine (This may not converge)
-benson.vi.mle <- glmer(mzinit ~ jointdem + cont + caprat2 + sglo + uncondcompel + condcompel + uncondeter + 
-                         condeter + probabilistic + peaceyears + peace2 + peace3 +
-                         (1 | ccode1) + (1 | ccode2) + (1 | ddyad),
-                       family = binomial(link = "logit"), data = benson.2011)
-
 
 # STAN Model
 
@@ -143,6 +137,9 @@ benson.2011.comp$challenger.id <- benson.2011.comp %>% group_indices(ccode1)
 # Create a target index variable 
 benson.2011.comp$target.id <- benson.2011.comp %>% group_indices(ccode2)
 
+# Create a dyad index variable
+benson.2011.comp$dyad.id <- benson.2011.comp %>% group_indices(ddyad)
+
 
 # Assign data and place in list
 stan.data.benson <- list(N = nrow(benson.2011.comp), y = benson.2011.comp$mzinit, 
@@ -150,7 +147,9 @@ stan.data.benson <- list(N = nrow(benson.2011.comp), y = benson.2011.comp$mzinit
                          chall = benson.2011.comp$challenger.id, 
                          C = length(unique(benson.2011.comp$challenger.id)), 
                          targ = benson.2011.comp$target.id,
-                         T = length(unique(benson.2011.comp$target.id))
+                         T = length(unique(benson.2011.comp$target.id)),
+                         dyad = benson.2011.comp$dyad.id,
+                         D = length(unique(benson.2011.comp$dyad.id))
                          )
 
 # compile STAN code
@@ -160,7 +159,7 @@ model.1 <- stan_model(file = "VI Stan Model.stan")
 vb.benson <- vb(model.1, data = stan.data.benson, seed = 12)
 launch_shinystan(vb.benson)
 
-# Regular STAN
+# Regular STAN: 10 hour runtime on my laptop
 system.time(
   vi.model.benson <- sampling(model.1,
                           data = stan.data.benson, 
@@ -171,12 +170,12 @@ system.time(
 # Check convergence diagnostics
 check_hmc_diagnostics(vi.model.benson)
 
-coef.summary <- summary(vi.model.benson, pars = c("beta", "alpha"), probs = c(0.025, 0.975))$summary
-rownames(coef.summary) <- c("jointdem", "cont", "caprat2", "sglo", 
+vi.summary.benson <- summary(vi.model.benson, pars = c("beta", "alpha"), probs = c(0.025, 0.975))$summary
+rownames(vi.summary.benson) <- c("jointdem", "cont", "caprat2", "sglo", 
                             "uncondcompel", "condcompel", "uncondeter", 
                               "condeter", "probabilistic", 
                               "peaceyears", "peace2", "peace3", 
                               "constant")
-coef.summary
+print(vi.summary.benson)
 
 
