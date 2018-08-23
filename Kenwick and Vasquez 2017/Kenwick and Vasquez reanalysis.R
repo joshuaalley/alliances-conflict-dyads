@@ -6,7 +6,6 @@
 
 # Load packages
 library(here)
-library(haven)
 library(arm)
 library(MASS)
 library(dplyr)
@@ -15,6 +14,8 @@ library(separationplot)
 library(sandwich)
 library(lmtest)
 library(xtable)
+library(rstan)
+library(shinystan)
 
 
 # Set working directory to current folder 
@@ -22,6 +23,9 @@ setwd(here::here())
 getwd()
 
 
+# Set up STAN guidelines
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 
 
 # Load data
@@ -103,3 +107,61 @@ print(results.kv.corr)
 
 xtable(kv.2017.model)
 xtable(results.kv.corr)
+
+
+
+
+
+### Estimate model with varying intercepts for states, and dyads
+# Pull IVs and rescale so posterior variances are not wildly different
+ivs.kv <- kv.2017.comp[, 2: 12]
+ivs.kv[1: ncol(ivs.kv)] <- lapply(ivs.kv[1: ncol(ivs.kv)], 
+                                  function(x) rescale(x, binary.inputs = "0/1"))
+ivs.kv <- as.matrix(ivs.kv)
+
+# create a challenger state index variable
+kv.2017.comp$challenger.id <- kv.2017.comp %>% group_indices(challenger)
+# Create a target index variable 
+kv.2017.comp$target.id <- kv.2017.comp %>% group_indices(target)
+
+# Create a dyad index variable
+kv.2017.comp$dyad.id <- kv.2017.comp %>% group_indices(ddyad)
+
+
+# Assign data and place in list
+stan.data.kv <- list(N = nrow(kv.2017.comp), y = kv.2017.comp$dispute, 
+                     X = ivs.kv, K = ncol(ivs.kv),
+                     chall = kv.2017.comp$challenger.id, 
+                     C = length(unique(kv.2017.comp$challenger.id)), 
+                     targ = kv.2017.comp$target.id,
+                     T = length(unique(kv.2017.comp$target.id)),
+                     dyad = kv.2017.comp$dyad.id,
+                     D = length(unique(kv.2017.comp$dyad.id))
+)
+
+# compile STAN code
+model.1 <- stan_model(file = "VI Stan Model.stan")
+
+# Run variational Bayes approximation: this did not converge
+vb.kv <- vb(model.1, data = stan.data.kv, seed = 12)
+launch_shinystan(vb.kv)
+
+
+# Regular STAN: this will take a long time. 
+# system.time(
+#  vi.model.kv <- sampling(model.1,
+#                              data = stan.data.kv, 
+#                              iter = 2000, warmup = 1000, chains = 4
+#  )
+#)
+
+# Check convergence diagnostics
+#check_hmc_diagnostics(vi.model.kv)
+
+vi.summary.kv <- summary(vb.kv, pars = c("beta", "alpha"), probs = c(0.025, 0.975))$summary
+rownames(vi.summary.kv) <- c("fbdef", "nfbdef", "pchaloff", "pchalneu",
+                             "ln_distance", "capprop", "jdem", "s_un_glo", 
+                             "peaceyrs", "peaceyrs2", "peaceyrs3", 
+                             "constant")
+print(vi.summary.kv)
+
