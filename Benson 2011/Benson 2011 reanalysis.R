@@ -5,7 +5,6 @@
 
 # Load packages
 library(here)
-library(haven)
 library(arm)
 library(MASS)
 library(dplyr)
@@ -26,7 +25,8 @@ getwd()
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
-
+# Set seed
+set.seed(12)
 
 
 # Load data 

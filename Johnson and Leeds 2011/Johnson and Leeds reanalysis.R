@@ -6,7 +6,6 @@
 
 # Load packages
 library(here)
-library(haven)
 library(arm)
 library(MASS)
 library(dplyr)
@@ -29,7 +28,8 @@ getwd()
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
-
+# Set seed
+set.seed(12)
 
 # Load data
 jl.2011 <- read.csv("Johnson and Leeds 2011/johnson-leeds-2011.csv")

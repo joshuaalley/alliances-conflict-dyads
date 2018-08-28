@@ -27,6 +27,8 @@ getwd()
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
+# Set seed
+set.seed(12)
 
 # Load data
 kv.2017 <- read.csv("Kenwick and Vasquez 2017/kenwick-vasquez-2017.csv")
