@@ -1,6 +1,6 @@
 // Joshua Alley
 // Texas A&M University
-// Varying Intercepts Logit Model 
+// Varying Intercepts Logit Model of MID initiation
 
 
 
@@ -24,9 +24,9 @@ parameters {
   real<lower = 0> sigma_ch; // variance hyperparameter of challenger intercepts
   real<lower = 0> sigma_tg; // variance hyperparameter of target intercepts
   real<lower = 0> sigma_dy; // variance hyperparameter for dyad intercepts
-  vector[C] alpha_ch_std; // better-behaved distribution for NC parameterization
-  vector[T] alpha_tg_std; // better-behaved distribution for NC parameterization
-  vector[D] alpha_dy_std; // better-behaved distribution for NC parameterization
+ vector[C] alpha_ch_std; // better-behaved distribution for NC parameterization
+ vector[T] alpha_tg_std; // better-behaved distribution for NC parameterization
+ vector[D] alpha_dy_std; // better-behaved distribution for NC parameterization
 }
 
 transformed parameters{
@@ -46,7 +46,7 @@ model {
   vector[N] y_hat; // linear prediction 
   
   for(i in 1:N)
-  y_hat[i] = alpha + alpha_ch[chall[i]] + alpha_tg[targ[i]] + alpha_dy[dyad[i]] +  X[i] * beta; 
+  y_hat[i] = alpha + alpha_ch[chall[i]] + alpha_tg[targ[i]] + alpha_dy[dyad[i]] + X[i] * beta; 
   
   alpha ~ normal(0, 3);
   alpha_ch_std ~ normal(0, 1);
@@ -55,7 +55,7 @@ model {
   sigma_tg ~ normal(0, 1); // half-normal
   alpha_dy_std ~ normal(0, 1); 
   sigma_dy ~ normal(0, 1); // half-normal
-  beta ~ student_t(5, 0, 2.5);
+  beta ~ student_t(7, 0, 2.5); 
   
   y ~ bernoulli_logit(y_hat);
 }
